@@ -19,12 +19,18 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 reply_keyboard = [['/my_profile', '/new_order'],
-                  ['/favorite', '/hz']]
+                  ['/notifications', '/hz']]
 inline_keyboard = [
     [
         InlineKeyboardButton("👍", callback_data="1"),
         InlineKeyboardButton("👎", callback_data="2"),
     ]]
+inline_keyboard1 = [
+    [
+        InlineKeyboardButton("👍да", callback_data="3"),
+        InlineKeyboardButton("👎нет", callback_data="4"),
+    ]]
+
 
 markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=False)
 users = defaultdict()
@@ -34,8 +40,13 @@ bd = sqlite3.connect('Users.sqlite')
 
 async def start(update, context):
     user = update.effective_user
-    await update.message.reply_html(
-        rf'Здравствуйте! {user.mention_html()}! Добро пожаловать в наше сообщество "Из теплых рук"!🍽️',
+    photo_path = "img.png"
+    caption = rf'Здравствуйте! {user.mention_html()}! Добро пожаловать в наше сообщество "Из теплых рук"!🍽️'
+
+    await update.message.reply_photo(
+        photo=open(photo_path, 'rb'),
+        caption=caption,
+        parse_mode='HTML', reply_markup=markup
     )
     cursor = bd.cursor()
     tgnik = update.effective_user.username
@@ -145,7 +156,6 @@ async def getting_description(update, context):
         await update.message.reply_text('Отлично! Спасибо за регистрацию!')
         await update.message.reply_text('Как только кто-то захочет сделать у Вас заказ, мы Вас оповестим!')
 
-    return 5
 
 
 async def finding_orders(update, context):
@@ -267,7 +277,7 @@ async def button(update, context):
         bd.commit()
         await query.edit_message_text('👍')
         await ask_for_m(update, context)
-    else:
+    elif int(query.data) == 2:
         await query.edit_message_text('👎')
         if query.message:
             await show_anket(update, context)
@@ -297,6 +307,54 @@ async def getting_message(update, context):
     bd.commit()
     print('done')
 
+async def notifications(update, context):
+    tgnik = update.effective_user.username
+    cursor = bd.cursor()
+    orders = cursor.execute(f"""SELECT * FROM Orders
+                                                WHERE seller = ? and accepted = ?""", (tgnik, 'нет',)).fetchall()
+    for order in orders:
+        msg = f"{order[2]},\n🔔 У вас новый заказ!\n👤 Покупатель: {order[1]}\n🕒 Время заказа: {order[3]}\n📝 Пожелания: {order[4]}"
+
+        await update.message.reply_text(msg)
+        markup1 = InlineKeyboardMarkup(inline_keyboard1)
+        await update.message.reply_text('Принять заказ?', reply_markup=markup1)
+
+async def button1(update, context):
+    query = update.callback_query
+    await query.answer()
+    if int(query.data) == 3:
+        print(3)
+        cursor = bd.cursor()
+        tgnik = update.effective_user.username
+
+        orders = cursor.execute(f"""SELECT * FROM Orders
+                                                        WHERE seller = ? and accepted = нет""", (tgnik,)).fetchall()
+        order_id = orders[0]
+        sqlite_insert_query = """UPDATE Orders SET accepted = ? WHERE id = ?"""
+        bd.cursor().execute(sqlite_insert_query,
+                            ('да', order_id))
+        bd.commit()
+        await query.edit_message_text('👍')
+    if int(query.data) == 4:
+        await query.edit_message_text('👎')
+
+async def my_profile(update, context):
+    tgnik = update.effective_user.username
+    cursor = bd.cursor()
+    sa = cursor.execute(f"""SELECT * FROM Sellers
+                                                    WHERE tg_nik = ? """, (tgnik,)).fetchall()
+    ba = cursor.execute(f"""SELECT * FROM Buyers
+                                                      WHERE tg_nik = ? """, (tgnik,)).fetchall()
+    if sa:
+        s = sa[0]
+        ans = (
+            f'Имя:{s[1]}\nТелеграм:{s[6]}\nГород:{s[5]}\nОписание: {s[2]}\nПрошел проверку: {s[3]}\nРейтинг пользователей: {s[4]}')
+    if ba:
+        s = ba[0]
+        ans = (
+            f'Имя:{s[1]}\nТелеграм:{s[3]}\nГород:{s[2]}')
+    await update.message.reply_text(ans)
+
 
 async def stop(update, context):
     await update.message.reply_text("Всего доброго!")
@@ -305,6 +363,7 @@ async def stop(update, context):
 
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
+
 
     conv_handler = ConversationHandler(
 
@@ -333,8 +392,13 @@ def main():
     application.add_handler(CommandHandler("getting_message", getting_message))
     application.add_handler(CommandHandler("new_order", finding_orders))
     application.add_handler(CommandHandler("show_anket", show_anket))
+    application.add_handler(CommandHandler("notifications", notifications))
+    application.add_handler(CommandHandler("my_profile", my_profile))
+
+
 
     application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(CallbackQueryHandler(button1))
 
     application.run_polling()
 
