@@ -18,8 +18,8 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-reply_keyboard = [['/my_profile', '/new_order'],
-                  ['/notifications', '/hz']]
+reply_keyboard = [['/im_buyer', '/im_seller'],
+                  ['/my_profile', '/help']]
 inline_keyboard = [
     [
         InlineKeyboardButton("👍", callback_data="1"),
@@ -57,6 +57,7 @@ async def start(update, context):
                         WHERE tg_nik = ?""", (tgnik,)).fetchall()
 
     if result_s or result_b:
+        print(result_s, result_b)
         await update.message.reply_text('Вы уже зарегистрированы!🙌')
 
     else:
@@ -64,6 +65,74 @@ async def start(update, context):
             'Давайте познакомимся! Выберете Вашу роль здесь: Вы будете продавать блюда или же покупать?\n напишите "Продавец" или "Покупатель"')
         return 1
 
+async def help(update, context):
+    await update.message.reply_text('''1. Начало работы
+Запустите бота, нажав /start.
+
+Бот пришлет приветственное сообщение и предложит зарегистрироваться.
+
+2. Регистрация
+Выберите роль:
+
+Продавец — если хотите продавать домашнюю еду.
+
+Покупатель — если хотите заказывать еду.
+
+Укажите:
+
+Ваше имя.
+
+Город, где вы находитесь.
+
+(Для продавцов) Описание ваших блюд и рецептов.
+
+3. Для покупателей
+Нажмите /im_buyer, чтобы найти продавцов в вашем городе.
+
+Просматривайте анкеты продавцов:
+
+👍 — сделать заказ.
+
+👎 — пропустить и перейти к следующему предложению.
+
+После выбора продавца напишите пожелания к заказу. Бот передаст их продавцу.
+
+4. Для продавцов
+Нажмите /im_seller, чтобы проверить новые заказы.
+
+Вы увидите:
+
+Имя покупателя.
+
+Время заказа.
+
+Пожелания к заказу.
+
+Выберите:
+
+👍да — принять заказ.
+
+👎нет — отклонить.
+
+5. Профиль
+Нажмите /my_profile, чтобы посмотреть свою информацию:
+
+Имя, город, описание (для продавцов).
+
+Рейтинг (для продавцов).
+
+6. Помощь
+Нажмите /help, чтобы узнать о возможностях бота.
+
+7. Завершение работы
+Нажмите /stop, чтобы завершить текущий диалог с ботом.
+
+🔹 Советы:
+Если бот не отвечает, проверьте, не завершили ли вы диалог командой /stop.
+
+Для продавцов: чем подробнее описание ваших блюд, тем больше шансов привлечь покупателей!
+
+Приятного использования! 😊''')
 
 async def getting_role(update, context):
     role = update.message.text
@@ -136,7 +205,7 @@ async def getting_city(update, context):
         return 4
     else:
         await update.message.reply_text('Отлично! Спасибо за регистрацию!')
-        await update.message.reply_text('Для просмотра предложений нажмите /new_order в основном меню.',
+        await update.message.reply_text('Для просмотра предложений нажмите /im_buyer в основном меню.',
                                         reply_markup=markup)
 
 
@@ -154,7 +223,7 @@ async def getting_description(update, context):
                             (descr1, update.effective_user.username))
         bd.commit()
         await update.message.reply_text('Отлично! Спасибо за регистрацию!')
-        await update.message.reply_text('Как только кто-то захочет сделать у Вас заказ, мы Вас оповестим!')
+        await update.message.reply_text('Теперь отправленные Вам заказы отображаются в разделе \im_seller!')
 
 
 
@@ -169,7 +238,7 @@ async def finding_orders(update, context):
     cursor = bd.cursor()
     needed_orders = cursor.execute(f"""SELECT * FROM Sellers
                                 WHERE city = ?""", (needed_city,)).fetchall()
-
+    print(needed_orders)
     if needed_orders:
         cursor = bd.cursor()
         needed_orders1 = cursor.execute(f"""SELECT * FROM Needed
@@ -248,9 +317,9 @@ async def show_anket(update, context):
                 await update.callback_query.message.reply_text('Сделать заказ?', reply_markup=reply_markup1)
         else:
             if update.message:
-                await update.message.reply_text('Вы просмотрели все доступные предложения. \nЧтобы посмотреть заново, выберите команду /new_order')
+                await update.message.reply_text('Вы просмотрели все доступные предложения. \nЧтобы посмотреть заново, выберите команду /im_buyer')
             elif update.callback_query:
-                await update.callback_query.message.reply_text('Вы просмотрели все доступные предложения. \nЧтобы посмотреть заново, выберите команду /new_order')
+                await update.callback_query.message.reply_text('Вы просмотрели все доступные предложения. \nЧтобы посмотреть заново, выберите команду /im_buyer')
 
 
 
@@ -305,7 +374,8 @@ async def getting_message(update, context):
     bd.cursor().execute(sqlite_insert_query,
                         (message, tgnik, seller))
     bd.commit()
-    print('done')
+    await update.message.reply_text("Ваше сообщение передано продавцу! Ожидайте ответа.")
+    return ConversationHandler.END
 
 async def notifications(update, context):
     tgnik = update.effective_user.username
@@ -390,10 +460,11 @@ def main():
     application.add_handler(CommandHandler("getting_city", getting_city))
     application.add_handler(CommandHandler("getting_description", getting_description))
     application.add_handler(CommandHandler("getting_message", getting_message))
-    application.add_handler(CommandHandler("new_order", finding_orders))
+    application.add_handler(CommandHandler("im_buyer", finding_orders))
     application.add_handler(CommandHandler("show_anket", show_anket))
-    application.add_handler(CommandHandler("notifications", notifications))
+    application.add_handler(CommandHandler("im_seller", notifications))
     application.add_handler(CommandHandler("my_profile", my_profile))
+    application.add_handler(CommandHandler("help", help))
 
 
 
